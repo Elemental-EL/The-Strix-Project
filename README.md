@@ -1,86 +1,112 @@
-**Intelligent Motion Detector with Doppler Radar and
-AI Analysis**
+# YOLOv8 + Face‑Recognition Motion Alert System
 
-**1. Introduction & Motivation**
+---
 
-**The proposed project is an intelligent motion detector designed to
-differentiate significant motion (such as a potential intruder) from
-minor, non-threatening movements (like a pet moving within a confined
-space). Using a Doppler radar sensor module, the device will detect
-motion based on frequency shifts and apply AI-driven analysis to decide
-whether to trigger an alarm or ignore the detected motion. This approach
-aims to minimize false alarms and improve overall security
-responsiveness.**
+## 1. Introduction & Motivation
 
-**2. Project Objectives**
+Modern video‑based security solutions often suffer from false alarms—pets, shadows or minor scene changes can trigger alerts intended for genuine intruders. This project replaces hardware radar sensors with a purely vision‑based pipeline that:
 
-- **Accurate Motion Detection: Utilize a Doppler radar sensor (e.g.,
-  RCWL-0516) to detect motion and measure parameters such as speed and
-  distance.**
+1. Detects motion via frame differencing  
+2. Runs a lightweight YOLOv8 model to localize people  
+3. Extracts and visualizes deep convolutional features  
+4. Recognizes “admin” faces from a library of selfies  
+5. Plays an audible buzzer when an **unknown** person is detected (with cooldown)
 
-- **Intelligent Decision Making: Implement an AI model to classify
-  detected motion into significant (potential intruder) or insignificant
-  (e.g., small pet) events.**
+By combining classical motion detection with AI‑driven object‑ and face‑recognition, we drastically reduce false alarms and provide richer insights (heatmaps, embeddings) for each event.
 
-- **User-Friendly Interface: Provide audible alarms for significant
-  detections and non-intrusive notifications for minor movements.**
+---
 
-- **Modular & Scalable Design: Develop a system that can be extended
-  with additional sensors or enhanced algorithms in future iterations.**
+## 2. Project Objectives
 
-**3. Design Specifications**
+- **Reliable Motion Filtering**  
+  Only process frames with significant pixel changes, ignoring minor flicker or lighting shifts.  
+- **Real‑Time Human Detection**  
+  Use YOLOv8‑n for sub‑100 ms inference on a consumer GPU or CPU.  
+- **Feature‑Map Visualization**  
+  Hook into the last convolutional layer to generate a heatmap overlay, aiding model interpretability.  
+- **Admin Face Recognition**  
+  Enroll any number of “admin” selfies; label known users in green, unknown in red.  
+- **Audible Alert with Cooldown**  
+  Play a buzzer sound on unknown detections, but suppress repeated alarms within a configurable cooldown window.
 
-- **Sensor Module:**
+---
 
-  - **Component: Doppler radar sensor module.**
+## 3. Design Specifications
 
-  - **Function: Detects movement through frequency shift (Doppler
-    effect) and provides raw motion data.**
+| Component               | Description                                                                                  |
+|-------------------------|----------------------------------------------------------------------------------------------|
+| **Motion Detection**    | Frame‑differencing (grayscale abs‑diff + threshold + pixel‑count). Configurable via `.env`. |
+| **Object Detection**    | YOLOv8‑n model (via `ultralytics.YOLO`). Bounding boxes drawn on live video.                |
+| **Feature Hooking**     | Forward‑hook on the penultimate `Conv2d` layer. Compute channel‑mean activation heatmap.     |
+| **Face Recognition**    | `face_recognition` library. Encodings built from all images in `admin_images/`.              |
+| **Alert System**        | `pygame` plays `buzzer.wav` on unknown face. Cooldown enforced in Python.                    |
+| **Configuration**       | All parameters (`paths`, `thresholds`, `cooldown`, etc.) live in `.env`.                     |
 
-  - **Operating Range: Optimized for detecting motion over distances
-    exceeding 1 meter.**
+---
+## 4. Future Insights
 
-- **Signal Processing & AI Module:**
+1. **Embedded Deployment**  
+   - Cross‑compile dependencies (PyTorch, OpenCV) for ARM on Raspberry Pi/Orange Pi.  
+   - Use the lightweight `yolov8n` or convert to TFLite/ONNX for faster edge inference.  
+   - Leverage the Pi Camera or USB webcam; optimize with GPU acceleration (Coral TPU, NVIDIA Jetson Nano).
 
-  - **Signal Thresholds: Set thresholds to filter out insignificant
-    movement (e.g., movements less than 1 meter or below a defined speed
-    threshold).**
+2. **IoT Integration**  
+   - Containerize the application (Docker) or build a minimal Python service.  
+   - On alarm, send notifications via MQTT, HTTP webhook, or push services (Pushover, Twilio SMS).  
+   - Expose a simple web dashboard (Flask/React) for live view, logs, and admin management.
 
-  - **AI Classification:**
+3. **Power & Enclosure**  
+   - Run headless on battery + UPS HAT for Raspberry Pi for uninterrupted operation.  
+   - Design a 3D‑printed case with mounting points, ventilation, and cable management.
 
-    - **Algorithm: Lightweight AI model (using frameworks such as
-      TensorFlow Lite or TinyML) trained on labeled data to distinguish
-      between human-sized objects and smaller entities.**
+4. **Scalability & Cloud**  
+   - Aggregate multiple devices’ alerts in the cloud (AWS IoT Core, Azure IoT Hub).  
+   - Perform periodic model updates and remote configuration via OTA firmware.
 
-    - **Data: Model training will utilize sample motion data
-      representing both significant intruder movements and common false
-      triggers (like pets).**
+---
 
-  - **Processing Unit: Microcontroller (ESP32 recommended) to handle
-    signal acquisition, data processing, and AI inference in real
-    time.**
+## 5. Setup & Usage Guide
 
-- **Alarm System:**
+#### After cloning the repository on your machine:
 
-  - **Alerts: Triggers an audible alarm upon detecting a significant
-    motion which is identified as an intruder by the AI model.**
+### 5.1 Environment
 
-- **Power & Enclosure:**
+1. Copy and edit the example .env file:
+   ```bash
+   cp .env.example .env
+    ```
+   
+2. Open `.env` and adjust any setting to your preference:
+    ```dotenv
+   YOLO_MODEL_PATH=yolov8n.pt
+    ADMIN_IMAGE_DIR=admin_images
+    BUZZER_AUDIO=buzzer.wav
+    MOTION_THRESHOLD=25
+    MOTION_PIXELS=5000
+    COOLDOWN_SECONDS=3
+    VIDEO_SOURCE=0
+    ```
 
-  - **Power Supply: Options include battery power for portability or USB
-    power for stationary applications.**
+### 5.2 Install Dependencies
 
-  - **Enclosure: A compact, durable case designed for indoor use, with
-    proper mounting provisions.**
+-
+    ```bash
+    pip install -r requirements.txt
+    ```
+> **Note**: This project requires **Linux**. The `face_recognition` library does not support Windows.
 
-**4. Conclusion**
+### 5.3 Add Admin Selfies
+Create an `admin_images/` directory in your project and
+place one or more face images (`.jpg`, `.png`) into it. The script will automatically encode every image found.
+You can also set a custom directory for your admin images in the `.env` file.
 
-**This project presents an innovative approach to motion detection by
-combining Doppler radar technology with AI-driven analysis. It addresses
-common pitfalls in motion detection systems, such as false alarms due to
-insignificant movements, and provides a scalable solution for enhanced
-security. Your approval will allow further development and testing of
-this integrated system, ultimately contributing to improved embedded
-systems design in practical security applications.**
+### 5.4 Run
 
+-
+    ```bash
+    python main.py
+    ```
+* Two windows titled "Live" and "Feature Heatmap Overlay" will show detection boxes and heatmap overlays.
+* Press **q** to quit.
+---
 ***&copy; 2025 Elyar KordKatool & Bahar Naderlou***
